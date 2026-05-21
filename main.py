@@ -8,7 +8,7 @@ import folium
 import requests
 import stanza
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from geopy.exc import GeocoderTimedOut
 from geopy.geocoders import Nominatim
 
