@@ -1,0 +1,7 @@
+
+beautifulsoup4
+duckduckgo-search
+folium
+geopy
+requests
+stanza
