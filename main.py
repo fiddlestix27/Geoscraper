@@ -1,4 +1,3 @@
-
 import csv
 import logging
 import time
@@ -11,8 +10,6 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 from geopy.exc import GeocoderTimedOut
 from geopy.geocoders import Nominatim
-
-# ---------------- CONFIG ---------------- #
 
 MAX_QUERIES = 10
 MAX_RESULTS_PER_QUERY = 50
@@ -27,8 +24,6 @@ USER_AGENT = (
 
 HEADERS = {"User-Agent": USER_AGENT}
 
-# ---------------------------------------- #
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -38,36 +33,20 @@ geolocator = Nominatim(user_agent="geo_scraper")
 
 
 def search_duckduckgo(query, max_results=50):
-    """Search DuckDuckGo and return URLs.""" 
-    logging.info(f"Searching DuckDuckGo for: {query}")
-
     with DDGS(headers=HEADERS) as ddgs:
         results = ddgs.text(query, max_results=max_results)
-
-        urls = []
-        for result in results:
-            href = result.get("href")
-            if href:
-                urls.append(href)
-
-        return urls
+        return [r.get("href") for r in results if r.get("href")]
 
 
 def fetch_page_text(url):
-    """Fetch webpage text content.""" 
     try:
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=REQUEST_TIMEOUT
-        )
-
+        response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        for script in soup(["script", "style", "noscript"]):
-            script.extract()
+        for tag in soup(["script", "style", "noscript"]):
+            tag.extract()
 
         text = soup.get_text(separator=" ", strip=True)
 
@@ -79,7 +58,6 @@ def fetch_page_text(url):
 
 
 def extract_locations(text, nlp):
-    """Extract GPE entities using Stanza.""" 
     if not text:
         return []
 
@@ -103,7 +81,6 @@ def extract_locations(text, nlp):
 
 
 def geocode_location(location):
-    """Convert location string to latitude/longitude.""" 
     try:
         geo = geolocator.geocode(location, timeout=10)
 
@@ -120,14 +97,12 @@ def geocode_location(location):
 
 
 def process_url(query, url, nlp):
-    """Process a single URL.""" 
     text = fetch_page_text(url)
 
     if not text:
         return []
 
     snippet = text[:300]
-
     locations = extract_locations(text, nlp)
 
     results = []
@@ -148,7 +123,6 @@ def process_url(query, url, nlp):
 
 
 def save_results(results, filename="results.csv"):
-    """Save results to CSV.""" 
     with open(filename, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.writer(csvfile)
 
@@ -171,16 +145,9 @@ def save_results(results, filename="results.csv"):
                 item["longitude"]
             ])
 
-    logging.info(f"Saved CSV results to {filename}")
-
 
 def generate_map(results, output_file="map.html"):
-    """Generate interactive map using Folium/OpenStreetMap.""" 
-    world_map = folium.Map(
-        location=[20, 0],
-        zoom_start=2,
-        tiles="OpenStreetMap"
-    )
+    world_map = folium.Map(location=[20, 0], zoom_start=2)
 
     for item in results:
         lat = item["latitude"]
@@ -189,11 +156,11 @@ def generate_map(results, output_file="map.html"):
         if lat is None or lon is None:
             continue
 
-        popup_html = f'''
-        <b>Query:</b> {item["query"]}<br>
-        <b>Location:</b> {item["location"]}<br>
-        <b>URL:</b> <a href="{item["url"]}" target="_blank">Source</a>
-        '''
+        popup_html = f"""
+        <b>Query:</b> {item['query']}<br>
+        <b>Location:</b> {item['location']}<br>
+        <b>URL:</b> <a href='{item['url']}' target='_blank'>Source</a>
+        """
 
         folium.Marker(
             location=[lat, lon],
@@ -203,11 +170,10 @@ def generate_map(results, output_file="map.html"):
 
     world_map.save(output_file)
 
-    logging.info(f"Saved map to {output_file}")
-
 
 def main():
     stanza.download("en")
+
     nlp = stanza.Pipeline(
         lang="en",
         processors="tokenize,ner",
@@ -229,27 +195,19 @@ def main():
     all_results = []
 
     with ThreadPoolExecutor(max_workers=THREADS) as executor:
-        future_map = {}
+        futures = []
 
         for query in queries:
-            urls = search_duckduckgo(
-                query,
-                max_results=MAX_RESULTS_PER_QUERY
-            )
+            urls = search_duckduckgo(query, max_results=MAX_RESULTS_PER_QUERY)
 
             for url in urls:
-                future = executor.submit(
-                    process_url,
-                    query,
-                    url,
-                    nlp
+                futures.append(
+                    executor.submit(process_url, query, url, nlp)
                 )
-
-                future_map[future] = url
 
                 time.sleep(0.2)
 
-        for future in as_completed(future_map):
+        for future in as_completed(futures):
             try:
                 result = future.result()
 
@@ -263,7 +221,7 @@ def main():
     generate_map(all_results)
 
     print("\nCompleted successfully.")
-    print("Files generated:")
+    print("Generated:")
     print("- results.csv")
     print("- map.html")
 
